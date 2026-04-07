@@ -18,7 +18,9 @@ target/
 *.iws
 *.iml
 *.ipr
-
+### app.props
+src/main/resources/application-local.properties
+###
 ### NetBeans ###
 /nbproject/private/
 /nbbuild/
