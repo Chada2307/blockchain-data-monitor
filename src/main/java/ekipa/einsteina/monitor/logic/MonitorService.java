@@ -1,7 +1,11 @@
 package ekipa.einsteina.monitor.logic;
 
-import ekipa.einsteina.monitor.logic.model.BlockMetrics;
-import ekipa.einsteina.monitor.logic.model.TransactionMetrics;
+import ekipa.einsteina.monitor.Models.BlockEntity;
+import ekipa.einsteina.monitor.Models.TransEntity;
+import ekipa.einsteina.monitor.interfaces.BlockRepository;
+import ekipa.einsteina.monitor.interfaces.TransRepository;
+import ekipa.einsteina.monitor.logic.dto.BlockMetrics;
+import ekipa.einsteina.monitor.logic.dto.TransactionMetrics;
 import ekipa.einsteina.monitor.reporting.reportingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -15,7 +19,9 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class MonitorService {
@@ -25,12 +31,17 @@ public class MonitorService {
     private int totalTrans = 0;
     private int totalBlocks = 0;
 
+    private final BlockRepository blockRepository;
+    private final TransRepository transRepository;
+
     @Autowired
-    public MonitorService(Web3j web3j, reportingService reporter){
+    public MonitorService(Web3j web3j, reportingService reporter, BlockRepository blockRepository, TransRepository transRepository){
         this.web3j = web3j;
         this.reporter = reporter;
         initHistoricalBlocks();
         startMonitorWSS();
+        this.blockRepository = blockRepository;
+        this.transRepository = transRepository;
     }
 
     private void startMonitorWSS(){
@@ -54,10 +65,14 @@ public class MonitorService {
             totalTrans += txCount;
 
             BlockMetrics metrics = new BlockMetrics(number, block.getHash(), txCount);
+
+            BlockEntity blockEntity = new BlockEntity(metrics);
+            blockRepository.save(blockEntity);
+
             reporter.reportBlockMetrics(List.of(metrics));
 
             if (isdetailed){
-                processTrans(block.getTransactions(), number);
+                processTrans(block.getTransactions(), number, blockEntity);
             }
         }
     }
@@ -80,8 +95,9 @@ public class MonitorService {
         }).start();
     }
 
-    private void processTrans(List<EthBlock.TransactionResult> transactions, BigInteger blockNumber) throws IOException {
+    private void processTrans(List<EthBlock.TransactionResult> transactions, BigInteger blockNumber, BlockEntity blockEntity) throws IOException {
         List<TransactionMetrics> txMetricsList = new ArrayList<>();
+        Set<TransEntity> transEntites = new HashSet<>();
 
         for (EthBlock.TransactionResult<?> txResult : transactions) {
             Object txObj = txResult.get();
@@ -103,17 +119,27 @@ public class MonitorService {
                     ? BigDecimal.ZERO
                     : Convert.fromWei(new BigDecimal(tx.getValue()), Convert.Unit.ETHER);
 
-            txMetricsList.add(new TransactionMetrics(
-                    blockNumber,
-                    tx.getHash(),
-                    tx.getFrom(),
-                    tx.getTo(),
-                    valueEth,
-                    actualGasUser
-            ));
+            TransactionMetrics transMetrics = new TransactionMetrics(
+                    blockNumber, tx.getHash(), tx.getFrom(), tx.getTo(), valueEth, actualGasUser
+            );
+
+            txMetricsList.add(transMetrics);
+
+            TransEntity entity = new TransEntity();
+            entity.setTxHash(transMetrics.txHash());
+            entity.setFromAddress(transMetrics.from());
+            entity.setToAddress(transMetrics.to());
+            entity.setValueEth(transMetrics.valueEth());
+            entity.setGasUsed(transMetrics.gasUsed());
+            entity.setBlock(blockEntity);
+            transEntites.add(entity);
+
         }
 
         if (!txMetricsList.isEmpty()) {
+            blockEntity.setTransactions(transEntites);
+            blockRepository.save(blockEntity);
+
             reporter.reportTransactions(txMetricsList);
         }
     }

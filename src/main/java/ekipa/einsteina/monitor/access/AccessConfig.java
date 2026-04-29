@@ -12,8 +12,8 @@ import java.io.IOException;
 @Configuration
 public class AccessConfig {
 
-    @Value("${blockchain.node.url_https}")
-    private String node_url_https;
+//    @Value("${blockchain.node.url_https}")
+//    private String node_url_https;
 
     @Value("${blockchain.node.url_wss}")
     private String node_url_wss;
@@ -24,8 +24,6 @@ public class AccessConfig {
         WebSocketService wss = new WebSocketService(node_url_wss, true);
         Thread.sleep(3000);
         wss.connect();
-
-
         return Web3j.build(wss);
     }
 }

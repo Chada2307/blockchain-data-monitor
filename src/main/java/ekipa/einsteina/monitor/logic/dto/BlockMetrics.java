@@ -1,4 +1,4 @@
-package ekipa.einsteina.monitor.logic.model;
+package ekipa.einsteina.monitor.logic.dto;
 
 import java.math.BigInteger;
 
