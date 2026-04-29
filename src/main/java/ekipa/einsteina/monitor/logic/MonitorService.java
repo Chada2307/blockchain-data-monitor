@@ -1,20 +1,19 @@
 package ekipa.einsteina.monitor.logic;
 
+import ekipa.einsteina.monitor.Models.BlockEntity;
+import ekipa.einsteina.monitor.Models.TransEntity;
+import ekipa.einsteina.monitor.interfaces.BlockRepository;
+import ekipa.einsteina.monitor.interfaces.TransRepository;
 import ekipa.einsteina.monitor.reporting.reportingService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.web3j.protocol.Web3j;
 import org.web3j.protocol.core.DefaultBlockParameter;
 import org.web3j.protocol.core.methods.response.EthBlock;
-import org.web3j.protocol.core.methods.response.EthEstimateGas;
-import org.web3j.protocol.core.methods.response.EthGetTransactionReceipt;
-import org.web3j.protocol.core.methods.response.EthTransaction;
 
 import java.io.IOException;
 import java.math.BigInteger;
 import java.util.List;
-import java.util.stream.Stream;
 
 @Service
 public class MonitorService {
@@ -23,18 +22,27 @@ public class MonitorService {
     private int totalTrans = 0;
     private int totalBlocks = 0;
 
+    private final BlockRepository blockRepository;
+    private final TransRepository transRepository;
+
+    public void saveBlockData(BlockEntity blockEntity) {
+        blockRepository.save(blockEntity);
+    }
+
     @Autowired
-    public MonitorService(Web3j web3j, reportingService reporter){
+    public MonitorService(Web3j web3j, reportingService reporter , BlockRepository blockRepository, TransRepository transRepository) {
         this.web3j = web3j;
         this.reporter = reporter;
         initHistoricalBlocks();
         startMonitorWSS();
+        this.blockRepository = blockRepository;
+        this.transRepository = transRepository;
     }
 
     private void startMonitorWSS(){
         web3j.blockFlowable(false).subscribe(ethBlock -> {
             BigInteger number = ethBlock.getBlock().getNumber();
-            processSingleBlock(number, false);
+            processSingleBlock(number, true);
         }, error -> {
             System.out.println("error: " + error.getMessage());
         });
@@ -44,13 +52,20 @@ public class MonitorService {
         EthBlock block = web3j.ethGetBlockByNumber(DefaultBlockParameter.valueOf(number), true).send();
 
         if(block.getBlock() != null){
+
+            BlockEntity blockEntity = new BlockEntity();
+            blockEntity.setBlockHash(block.getBlock().getHash());
+            blockEntity.setBlockNumber(block.getBlock().getNumber().longValue());
+            blockEntity.setTxCount(block.getBlock().getTransactions().size());
+
             totalBlocks++;
             int txCount = block.getBlock().getTransactions().size();
             totalTrans += txCount;
             reporter.reportBlock(number, block.getBlock().getHash(), txCount);
             if (isdetailed){
-                processTrans(block.getBlock().getTransactions());
+                processTrans(block.getBlock().getTransactions(), blockEntity);
             }
+            blockRepository.save(blockEntity);
         }
 //
 //        int txCount = block.getBlock().getTransactions().size();
@@ -79,9 +94,10 @@ public class MonitorService {
         }).start();
     }
 
-    private void processTrans(List<EthBlock.TransactionResult> transactions){
+    private void processTrans(List<EthBlock.TransactionResult> transactions, BlockEntity blockEntity){
         transactions.forEach(txResult -> {
             EthBlock.TransactionObject tx = (EthBlock.TransactionObject) txResult.get();
+
 
 
             BigInteger actualGasUser = BigInteger.ZERO;
@@ -91,6 +107,18 @@ public class MonitorService {
             }catch (IOException e){
                 e.printStackTrace();
             }
+
+            TransEntity trans = new TransEntity();
+            trans.setTxHash(tx.getHash());
+            trans.setFromAddress(tx.getFrom());
+            trans.setToAdrress(tx.getTo());
+            trans.setValueWei(tx.getValue());
+            trans.setBlock(blockEntity);
+            trans.setGasUsed(actualGasUser);
+            transRepository.save(trans);
+//            -------------------------------- No row with the given identifier exists for entity
+//
+
 
 //            System.out.println("-----------------------------");
 //            System.out.println("Hash: " + tx.getHash());
