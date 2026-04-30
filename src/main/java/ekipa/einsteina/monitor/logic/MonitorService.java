@@ -1,25 +1,27 @@
 package ekipa.einsteina.monitor.logic;
 
+import ekipa.einsteina.monitor.logic.model.BlockMetrics;
+import ekipa.einsteina.monitor.logic.model.TransactionMetrics;
 import ekipa.einsteina.monitor.reporting.reportingService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.web3j.protocol.Web3j;
 import org.web3j.protocol.core.DefaultBlockParameter;
 import org.web3j.protocol.core.methods.response.EthBlock;
-import org.web3j.protocol.core.methods.response.EthEstimateGas;
 import org.web3j.protocol.core.methods.response.EthGetTransactionReceipt;
-import org.web3j.protocol.core.methods.response.EthTransaction;
+import org.web3j.utils.Convert;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Stream;
 
 @Service
 public class MonitorService {
     private final Web3j web3j;
     private final reportingService reporter;
+
     private int totalTrans = 0;
     private int totalBlocks = 0;
 
@@ -36,33 +38,29 @@ public class MonitorService {
             BigInteger number = ethBlock.getBlock().getNumber();
             processSingleBlock(number, false);
         }, error -> {
-            System.out.println("error: " + error.getMessage());
+            System.err.println("WSS error: " + error.getMessage());
         });
     }
 
     public void processSingleBlock(BigInteger number, boolean isdetailed) throws IOException{
-        EthBlock block = web3j.ethGetBlockByNumber(DefaultBlockParameter.valueOf(number), true).send();
+        EthBlock ethBlock = web3j.ethGetBlockByNumber(DefaultBlockParameter.valueOf(number), true).send();
+        EthBlock.Block block = ethBlock.getBlock();
 
-        if(block.getBlock() != null){
+        if(block != null){
             totalBlocks++;
-            int txCount = block.getBlock().getTransactions().size();
+            int txCount = block.getTransactions().size();
             totalTrans += txCount;
-            reporter.reportBlock(number, block.getBlock().getHash(), txCount);
+
+            BlockMetrics metrics = new BlockMetrics(number, block.getHash(), txCount);
+            reporter.reportBlockMetrics(List.of(metrics));
+
             if (isdetailed){
-                processTrans(block.getBlock().getTransactions());
+                processTrans(block.getTransactions(), number);
             }
         }
-//
-//        int txCount = block.getBlock().getTransactions().size();
-//        System.out.println("-----------------------------");
-//        System.out.println("txCount: " + txCount);
-//        System.out.println("block: " + block.getBlock().getHash());
-//        System.out.println("-----------------------------");
-//        totalBlocks++;
     }
 
-
-   public void initHistoricalBlocks(){
+    public void initHistoricalBlocks(){
         new Thread(() -> {
             try{
                 BigInteger currentBlock = web3j.ethBlockNumber().send().getBlockNumber();
@@ -79,36 +77,41 @@ public class MonitorService {
         }).start();
     }
 
-    private void processTrans(List<EthBlock.TransactionResult> transactions){
-        transactions.forEach(txResult -> {
-            EthBlock.TransactionObject tx = (EthBlock.TransactionObject) txResult.get();
+    private void processTrans(List<EthBlock.TransactionResult> transactions, BigInteger blockNumber) throws IOException {
+        List<TransactionMetrics> txMetricsList = new ArrayList<>();
 
-
-            BigInteger actualGasUser = BigInteger.ZERO;
-            try{
-                var receipt = web3j.ethGetTransactionReceipt(tx.getHash()).send();
-                actualGasUser = receipt.getTransactionReceipt().map(r -> r.getGasUsed()).orElse(BigInteger.ZERO);
-            }catch (IOException e){
-                e.printStackTrace();
+        for (EthBlock.TransactionResult<?> txResult : transactions) {
+            Object txObj = txResult.get();
+            if (!(txObj instanceof EthBlock.TransactionObject tx)) {
+                continue;
             }
 
-//            System.out.println("-----------------------------");
-//            System.out.println("Hash: " + tx.getHash());
-//            System.out.println("From: " + tx.getFrom());
-//            System.out.println("To: " + tx.getTo());
-//            System.out.println("Value: " + tx.getValue());
-//            System.out.println("Gas: " + actualGasUser);
-//            System.out.println("-----------------------------");
+            BigInteger actualGasUser = BigInteger.ZERO;
+            try {
+                EthGetTransactionReceipt receiptResponse = web3j.ethGetTransactionReceipt(tx.getHash()).send();
+                actualGasUser = receiptResponse.getTransactionReceipt()
+                        .map(r -> r.getGasUsed())
+                        .orElse(BigInteger.ZERO);
+            } catch (IOException e) {
+                System.err.println("Receipt Error: " + e.getMessage());
+            }
 
-            reporter.reportTrans(
+            BigDecimal valueEth = tx.getValue() == null
+                    ? BigDecimal.ZERO
+                    : Convert.fromWei(new BigDecimal(tx.getValue()), Convert.Unit.ETHER);
+
+            txMetricsList.add(new TransactionMetrics(
+                    blockNumber,
                     tx.getHash(),
                     tx.getFrom(),
                     tx.getTo(),
-                    tx.getValue(),
+                    valueEth,
                     actualGasUser
-            );
-        });
+            ));
+        }
+
+        if (!txMetricsList.isEmpty()) {
+            reporter.reportTransactions(txMetricsList);
+        }
     }
-
-
 }
