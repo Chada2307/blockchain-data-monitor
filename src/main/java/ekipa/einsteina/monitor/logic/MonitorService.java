@@ -36,7 +36,9 @@ public class MonitorService {
     private void startMonitorWSS(){
         web3j.blockFlowable(false).subscribe(ethBlock -> {
             BigInteger number = ethBlock.getBlock().getNumber();
-            processSingleBlock(number, false);
+            //System.out.println("Block WSS" + number);
+            processSingleBlock(number, true);
+
         }, error -> {
             System.err.println("WSS error: " + error.getMessage());
         });
@@ -67,8 +69,9 @@ public class MonitorService {
 
                 for (int i = 0; i < 100; i++){
                     BigInteger blockNumber = currentBlock.subtract(BigInteger.valueOf(i));
-                    processSingleBlock(blockNumber, i < 10);
-                    Thread.sleep(300);
+                    //System.out.println("Block HIST" + blockNumber);
+                    processSingleBlock(blockNumber, false); // can add I < 10
+                    Thread.sleep(10);
                 }
 
             }catch(Exception e){
