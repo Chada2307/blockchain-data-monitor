@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import ekipa.einsteina.monitor.logic.model.BlockMetrics;
 import ekipa.einsteina.monitor.logic.model.TransactionMetrics;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -16,6 +18,8 @@ import java.util.List;
 
 @Service
 public class reportingService {
+
+    private static final Logger log = LoggerFactory.getLogger(reportingService.class);
 
     private static final String TXT_FILE = "./reporting.txt";
     private static final String BLOCKS_CSV_FILE = "./reporting_blocks.csv";
@@ -44,6 +48,11 @@ public class reportingService {
             }
         }
 
+        for (BlockMetrics m : metrics) {
+            log.info("Przetworzono blok: {} | Hash: {} | TX: {}",
+                    m.blockNumber(), m.blockHash(), m.transactionCount());
+        }
+
         appendToJson("blocks", metrics.stream().map(this::blockToNode).toList());
     }
 
@@ -68,6 +77,13 @@ public class reportingService {
                         t.to() != null ? t.to() : "",
                         t.valueEth(), t.gasUsed());
             }
+        }
+
+        for (TransactionMetrics t : txs) {
+            log.info("Transakcja: {} | Blok: {} | Od: {} | Do: {} | Wartość: {} ETH | Gas: {}",
+                    t.txHash(), t.blockNumber(), t.from(),
+                    t.to() != null ? t.to() : "kontrakt",
+                    t.valueEth(), t.gasUsed());
         }
 
         appendToJson("transactions", txs.stream().map(this::txToNode).toList());
