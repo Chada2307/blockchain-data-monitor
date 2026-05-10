@@ -8,6 +8,7 @@ import ekipa.einsteina.monitor.logic.dto.BlockMetrics;
 import ekipa.einsteina.monitor.logic.dto.TransactionMetrics;
 import ekipa.einsteina.monitor.reporting.reportingService;
 import org.springframework.beans.factory.annotation.Autowired;
+import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 import org.web3j.protocol.Web3j;
 import org.web3j.protocol.core.DefaultBlockParameter;
@@ -38,10 +39,14 @@ public class MonitorService {
     public MonitorService(Web3j web3j, reportingService reporter, BlockRepository blockRepository, TransRepository transRepository){
         this.web3j = web3j;
         this.reporter = reporter;
-        initHistoricalBlocks();
-        startMonitorWSS();
         this.blockRepository = blockRepository;
         this.transRepository = transRepository;
+    }
+
+    @PostConstruct
+    public void start() {
+        initHistoricalBlocks();
+        startMonitorWSS();
     }
 
     private void startMonitorWSS(){

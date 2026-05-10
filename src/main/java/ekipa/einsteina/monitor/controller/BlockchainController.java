@@ -42,7 +42,9 @@ public class BlockchainController {
     public Map<String, Object> getStats(){
         Map<String, Object> stats = new HashMap<>();
         stats.put("totalBlocks", blockRepository.count());
-        stats.put("avgGas", Math.round(transRepository.findAverageGasUsed() * 100.0) / 100.0);
+        Double avgObj = transRepository.findAverageGasUsed();
+        double avg = (avgObj == null) ? 0.0 : avgObj.doubleValue();
+        stats.put("avgGas", Math.round(avg * 100.0) / 100.0);
         return stats;
     }
 }
